@@ -27,6 +27,9 @@ import androidx.compose.ui.unit.dp
 import de.felice.chipcardreader.cards.AppDump
 import de.felice.chipcardreader.cards.CardResult
 import de.felice.chipcardreader.cards.DesfireDump
+import de.felice.chipcardreader.cards.vdv.VdvTicket
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
@@ -74,9 +77,20 @@ private fun ResultView(result: CardResult) {
                             Text(euro(result.balance), style = MaterialTheme.typography.displayMedium)
                             result.lastTransaction?.let { Text("Letzte Buchung: ${euro(it)}") }
                         }
+                        is CardResult.Ticket -> {
+                            Text("eTicket (VDV-KA)", style = MaterialTheme.typography.titleMedium)
+                            val c = result.card
+                            if (c.tickets.isEmpty()) Text("Keine Fahrberechtigung auf der Karte.")
+                            Text("Karte gültig: ${range(c.appValidFrom, c.appValidUntil)}")
+                            c.appOrg?.let { Text("Herausgeber: Organisation $it") }
+                        }
                         is CardResult.Desfire -> {
                             Text("MIFARE DESFire", style = MaterialTheme.typography.titleMedium)
-                            Text("Format unbekannt — unten siehst du, was frei lesbar ist.")
+                            if (result.dump.applications.isEmpty()) {
+                                Text("Die Karte zeigt keine Applikationen ohne Schlüssel. Hier ist nichts frei lesbar.")
+                            } else {
+                                Text("Format unbekannt — unten siehst du, was frei lesbar ist.")
+                            }
                         }
                         is CardResult.Other -> {
                             Text(result.technologies.joinToString(", "), style = MaterialTheme.typography.titleMedium)
@@ -92,6 +106,12 @@ private fun ResultView(result: CardResult) {
                 }
             }
         }
+        if (result is CardResult.Ticket) {
+            items(result.card.tickets) { TicketCard(it) }
+            item { Text("Rohdaten", style = MaterialTheme.typography.titleMedium) }
+            item { Mono(result.card.rawDirectory) }
+            items(result.card.tickets) { Mono(it.raw) }
+        }
         val dump: DesfireDump? = when (result) {
             is CardResult.Balance -> result.dump
             is CardResult.Desfire -> result.dump
@@ -104,6 +124,36 @@ private fun ResultView(result: CardResult) {
         }
     }
 }
+
+@Composable
+private fun TicketCard(ticket: VdvTicket) {
+    val validity = ticket.validityAt(LocalDateTime.now())
+    val (badge, color) = when (validity) {
+        VdvTicket.Validity.VALID -> "✅ gültig" to MaterialTheme.colorScheme.primary
+        VdvTicket.Validity.EXPIRED -> "❌ abgelaufen" to MaterialTheme.colorScheme.error
+        VdvTicket.Validity.NOT_YET -> "⏳ noch nicht gültig" to MaterialTheme.colorScheme.tertiary
+        VdvTicket.Validity.UNKNOWN -> "❔ unbekannt" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(ticket.productName, style = MaterialTheme.typography.titleLarge)
+            Text(badge, color = color, style = MaterialTheme.typography.titleMedium)
+            Text("Gültig: ${range(ticket.validFrom, ticket.validUntil)}")
+            ticket.infoText?.takeIf { it.isNotBlank() && it != ticket.productName }?.let { Text(it) }
+            Text(
+                "Produkt ${ticket.productNumber ?: "?"} · Org ${ticket.productOrg ?: "?"} · " +
+                    "Nr. ${ticket.entitlementNumber ?: "?"}" +
+                    (ticket.status?.let { " · Status 0x%02X".format(it) } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+private val DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
+
+private fun range(from: LocalDateTime?, until: LocalDateTime?): String =
+    "${from?.format(DATE) ?: "?"} – ${until?.format(DATE) ?: "?"}"
 
 @Composable
 private fun AppCard(app: AppDump) {

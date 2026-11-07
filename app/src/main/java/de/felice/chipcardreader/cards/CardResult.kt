@@ -1,5 +1,6 @@
 package de.felice.chipcardreader.cards
 
+import de.felice.chipcardreader.cards.vdv.VdvCard
 import java.math.BigDecimal
 
 /** Everything the UI can show after a card was tapped. */
@@ -14,6 +15,9 @@ sealed interface CardResult {
         val lastTransaction: BigDecimal?,
         val dump: DesfireDump?,
     ) : CardResult
+
+    /** A VDV-KA eTicket card (Deutschlandticket & Co.). */
+    data class Ticket(override val uid: String, val card: VdvCard) : CardResult
 
     /** A DESFire card we don't understand (yet) — show what's freely readable. */
     data class Desfire(override val uid: String, val dump: DesfireDump) : CardResult

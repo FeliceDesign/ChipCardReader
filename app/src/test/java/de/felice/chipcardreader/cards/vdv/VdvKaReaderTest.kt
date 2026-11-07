@@ -60,6 +60,17 @@ class VdvKaReaderTest {
     }
 
     @Test
+    fun `reads the logbook`() {
+        val result = CardDispatcher.readIsoDep("04:99", ticketCard(withLog = true)) as CardResult.Ticket
+        val entry = result.card.log.single()
+        assertEquals("Fahrt / Kontrolle", entry.kind)
+        assertEquals(LocalDateTime.of(2026, 11, 3, 8, 15, 0), entry.time)
+        assertEquals(4711, entry.placeNumber)
+        assertEquals(6291, entry.placeOrg)
+        assertTrue(result.card.hasCustomerData)
+    }
+
+    @Test
     fun `retries select with P2=00 after 6A86`() {
         val io = de.felice.chipcardreader.nfc.FakeDesfireCard(
             mapOf(
@@ -74,13 +85,14 @@ class VdvKaReaderTest {
 
     // --- helpers -----------------------------------------------------------
 
-    private fun ticketCard(): FakeDesfireCard {
+    private fun ticketCard(withLog: Boolean = false): FakeDesfireCard {
         val appStatic = int(1, 4) + int(6072, 2) + int(0x12, 1) +
             int(encode(LocalDateTime.of(2024, 1, 1, 0, 0)), 4) +
             int(encode(LocalDateTime.of(2030, 12, 31, 0, 0)), 4)
         val directory = tlv(
             0xE0,
             tlv(0xE2, tlv(0x81, appStatic) + tlv(0xC0, byteArrayOf(1))) +
+                (if (withLog) tlv(0xE4, tlv(0xC0, byteArrayOf(2))) + tlv(0xE7, tlv(0xC0, byteArrayOf(3))) else ByteArray(0)) +
                 tlv(0xE9, tlv(0xC0, byteArrayOf(1))),
         )
         val ticketStatic = int(123456, 4) + int(6072, 2) + int(9999, 2) + int(6072, 2) + int(6072, 2) +
@@ -91,8 +103,15 @@ class VdvKaReaderTest {
             tlv(0xEA, tlv(0x83, ticketStatic) + tlv(0x84, byteArrayOf(1, 0))) +
                 tlv(0xC7, "Deutschlandticket".toByteArray()),
         )
+        // 27-byte "Allgemeine Transaktionsdaten" inside a trip transaction (F1)
+        val logData = int(1, 2) + int(99, 4) + int(5, 3) + int(6291, 2) + int(7, 1) + int(321, 2) +
+            int(6291, 2) + int(encode(LocalDateTime.of(2026, 11, 3, 8, 15, 0)), 4) + int(1, 1) +
+            int(4711, 3) + int(6291, 2) + int(0x05, 1)
+        val log = tlv(0xE3, tlv(0xF1, tlv(0x89, logData)))
         return FakeDesfireCard(
             mapOf(
+                "10CA01F002E30200" to listOf(log.toHex("") + "9000"),
+                "00CA01F002E30200" to listOf("9000"),
                 "00A4040C0CD2760001354B414E4D30310000" to listOf(directory.toHex("") + "9000"),
                 "10CA01F002E80100" to listOf(ticket.toHex("") + "9000"),
                 "00CA01F002E80100" to listOf("9000"),

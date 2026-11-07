@@ -72,3 +72,29 @@ private fun uint(b: ByteArray, offset: Int, length: Int): Long {
     for (i in offset until offset + length) v = (v shl 8) or (b[i].toLong() and 0xFF)
     return v
 }
+
+/*
+ * Allgemeine Transaktionsdaten (0x89), 27 bytes:
+ *   2 logSeq | 4 samSeq | 3 samNr | 2 operator | 1 terminalTyp | 2 terminalNr
+ *   | 2 transaction org | 4 time | 1 ortTyp | 3 ortNr | 2 ort org | 1 logTyp
+ */
+internal fun decodeLogEntry(b: ByteArray, parentTag: Int?): VdvLogEntry? {
+    if (b.size < 27) return null
+    return VdvLogEntry(
+        time = dateTimeCompact(uint(b, 16, 4)),
+        kind = when (parentTag) {
+            0xF7 -> "Karte ausgegeben"
+            0xF6 -> "Ticket ausgegeben"
+            0xF1 -> "Fahrt / Kontrolle"
+            0x8E, 0x8D -> "Status geändert"
+            else -> "Vorgang"
+        },
+        transactionType = b[26].toInt() and 0xFF,
+        terminalType = b[11].toInt() and 0xFF,
+        terminalNumber = uint(b, 12, 2).toInt(),
+        terminalOrg = uint(b, 14, 2).toInt(),
+        placeType = b[20].toInt() and 0xFF,
+        placeNumber = uint(b, 21, 3).toInt(),
+        placeOrg = uint(b, 24, 2).toInt(),
+    )
+}

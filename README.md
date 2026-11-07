@@ -1,11 +1,11 @@
 # ChipCardReader
 
-Private Android-App zum Auslesen von NFC-Chipkarten: Mensa-Guthaben, Gültigkeiten, Rohdaten.
+Privates Android-NFC-Tool: Fahrkarten und Mensa-Guthaben lesen, beliebige Tags analysieren, NFC-Sticker beschreiben.
 
 **Grundregel:** Die App liest nur, was eine Karte *ohne Schlüssel* freiwillig hergibt.
-Keine Authentifizierung, kein Schlüsselraten, kein Schreiben. (§ 202a StGB lässt grüßen.)
+Keine Authentifizierung, kein Schlüsselraten. Geschrieben wird nur auf NFC-Sticker, nie auf Chipkarten, und nie wird ein Tag dauerhaft gesperrt. (§ 202a StGB lässt grüßen.)
 
-## Was geht (v0.3)
+## Was geht (v0.4)
 
 | Karte | Status |
 |---|---|
@@ -13,7 +13,11 @@ Keine Authentifizierung, kein Schlüsselraten, kein Schreiben. (§ 202a StGB lä
 | Mensa-Karten mit **Intercard**-System (DESFire, App `0x5F8415`) | ✅ Guthaben + letzte Buchung (mit echter Karte getestet) |
 | Mensa-Karten mit **MagnaCarta**-System (DESFire, App `0xF080F3`) | 🧪 Guthaben, nach MensaGuthaben-Doku, noch ohne echte Karte getestet |
 | Jede andere **MIFARE DESFire** | 🔍 Explorer: listet Apps/Dateien, zeigt frei lesbare Bytes |
-| MIFARE Classic / Ultralight | ℹ️ nur Erkennung + UID |
+| **Jeder Tag** | ✅ Chipmodell (NTAG213/215/216, Ultralight, Classic 1K/4K …), Hersteller, Speicher, UID, ATQA/SAK |
+| **NDEF-Inhalt** (Sticker) | ✅ Links, Text, Kontakte (vCard), WLAN-Name, App-Links anzeigen |
+| **NDEF schreiben** | ✅ Link, Text, Kontakt auf Sticker schreiben, mit Größenanzeige |
+| VDV-Karte: **„Was weiß meine Karte über mich?“** | 🧪 Logbuch (Zeit, Ort-Nr., Gerät), Hinweis auf PIN-geschützte Kundendaten. Logbuch-Format aus czietz, noch nicht mit echter Karte bestätigt |
+| **Auto-Öffnen** | ✅ App startet beim Antippen einer Karte (Link-Sticker öffnen weiterhin den Browser) |
 | Ausweis, Bankkarte (ISO 7816) | ⏳ noch nicht |
 
 ## Architektur
@@ -21,7 +25,12 @@ Keine Authentifizierung, kein Schlüsselraten, kein Schreiben. (§ 202a StGB lä
 ```
 MainActivity          NFC Reader Mode, reicht Tags an das ViewModel weiter
 ui/ReaderViewModel    Android-Tag -> IsoDep -> CardDispatcher, hält den UI-State
-ui/CardScreen         Compose-UI
+ui/MainScreen         Tabs „Lesen“ / „Schreiben“, Schreibformular
+ui/CardScreen         Lesen-Ansicht (Tickets, Guthaben, Datenschutz, Chip-Info, NDEF)
+ndef/Ndef             NDEF-Records lesen, vCard bauen (reines Kotlin)
+nfc/TagInspector      Chiptyp, Speicher, NDEF eines beliebigen Tags (Android)
+nfc/NdefWriter        Sticker beschreiben, mit Sicherheitsregeln
+nfc/ChipIdentifier    GET_VERSION/Größe → Modellname
 cards/CardDispatcher  "Was ist das für eine Karte?" (reines Kotlin, testbar)
 cards/vdv/            VDV-KA: SELECT, TLV-Verzeichnis, GET DATA, Datumsformat
 cards/IntercardReader Guthaben-Systeme (BalanceReader: Intercard, MagnaCarta)

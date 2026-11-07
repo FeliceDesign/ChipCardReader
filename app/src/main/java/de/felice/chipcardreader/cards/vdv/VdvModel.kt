@@ -8,7 +8,25 @@ data class VdvCard(
     val appValidFrom: LocalDateTime?,
     val appValidUntil: LocalDateTime?,
     val tickets: List<VdvTicket>,
+    val log: List<VdvLogEntry> = emptyList(),
+    val logRaw: String? = null,
+    /** The directory lists a customer-data block (name, birthday). PIN-protected, never read. */
+    val hasCustomerData: Boolean = false,
     val rawDirectory: String,
+)
+
+/** One event from the card's own logbook. */
+data class VdvLogEntry(
+    val time: LocalDateTime?,
+    /** What kind of event, by the TLV block it was found in. */
+    val kind: String,
+    val transactionType: Int,
+    val terminalType: Int,
+    val terminalNumber: Int,
+    val terminalOrg: Int,
+    val placeType: Int,
+    val placeNumber: Int,
+    val placeOrg: Int,
 )
 
 data class VdvTicket(

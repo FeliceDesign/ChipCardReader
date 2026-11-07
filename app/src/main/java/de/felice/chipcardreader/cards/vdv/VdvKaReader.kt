@@ -53,12 +53,18 @@ class VdvKaReader(private val card: Iso7816) {
             readTicket(entry, pointer.toInt() and 0xFF)
         }
 
+        val logPointer = directory.child(Tags.VERZ_APPLIKATIONSLOGBUCH)?.child(Tags.ZEIGER)?.value?.firstOrNull()
+        val log = logPointer?.let { readLog(it.toInt() and 0xFF) }
+
         return VdvCard(
             appInstance = app?.instance,
             appOrg = app?.org,
             appValidFrom = app?.validFrom,
             appValidUntil = app?.validUntil,
             tickets = tickets,
+            log = log?.first.orEmpty(),
+            logRaw = log?.second,
+            hasCustomerData = directory.child(Tags.VERZ_KUNDENDATEN) != null,
             rawDirectory = root.joinToString("") { it.pretty(names = Tags.NAMES) },
         )
     }
@@ -84,6 +90,27 @@ class VdvKaReader(private val card: Iso7816) {
             else "GET DATA fehlgeschlagen (SW ${response.swHex})",
         )
     }
+
+    /**
+     * The "Applikationslogbuch": the card's own diary of what happened to it
+     * (issued, checked, ...). Each event carries a 0x89 block with time,
+     * place and terminal. Layout from github.com/czietz/parse-vdv-chipcard.
+     */
+    private fun readLog(pointer: Int): Pair<List<VdvLogEntry>, String> {
+        val response = readChained(Tags.APPLIKATIONSLOGBUCH, pointer)
+        if (!response.isSuccess) return emptyList<VdvLogEntry>() to "Logbuch nicht lesbar (SW ${response.swHex})"
+        val tlvs = runCatching { BerTlv.parse(response.data) }.getOrElse {
+            return emptyList<VdvLogEntry>() to response.data.toHex()
+        }
+        val entries = tlvs.flatMap { walkWithParent(it, null) }
+            .filter { (tlv, _) -> tlv.tag == Tags.ALLGEMEINE_TRANSAKTIONSDATEN }
+            .mapNotNull { (tlv, parent) -> decodeLogEntry(tlv.value, parent) }
+            .sortedByDescending { it.time }
+        return entries to tlvs.joinToString("") { it.pretty(names = Tags.NAMES) }
+    }
+
+    private fun walkWithParent(tlv: Tlv, parent: Int?): List<Pair<Tlv, Int?>> =
+        listOf(tlv to parent) + tlv.children.orEmpty().flatMap { walkWithParent(it, tlv.tag) }
 
     /**
      * GET DATA with "command chaining": data can be longer than one 256-byte
@@ -122,6 +149,10 @@ object Tags {
     const val BERECHTIGUNG_STATISCH = 0x83
     const val BERECHTIGUNG_DYNAMISCH = 0x84
     const val ZEIGER = 0xC0
+    const val APPLIKATIONSLOGBUCH = 0xE3
+    const val VERZ_APPLIKATIONSLOGBUCH = 0xE4
+    const val VERZ_KUNDENDATEN = 0xE7
+    const val ALLGEMEINE_TRANSAKTIONSDATEN = 0x89
     const val INFOTEXT = 0xC7
 
     val NAMES = mapOf(
@@ -146,6 +177,13 @@ object Tags {
         0xEB to "Schlüsselregister",
         0xEC to "Verz. Schlüsselregister",
         0xC0 to "Zeiger",
+        0x89 to "Transaktionsdaten",
+        0xF7 to "Ausgabe Applikation",
+        0xF6 to "Ausgabe Berechtigung",
+        0xF1 to "Fahrttransaktion",
+        0x8B to "Fahrtdaten",
+        0x8E to "Statusänderung App",
+        0x8D to "Statusänderung Berechtigung",
         0xC3 to "Letzte Transaktion",
         0xC7 to "Infotext",
         0x90 to "Prioritäten",

@@ -1,11 +1,8 @@
 package de.felice.chipcardreader.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,20 +15,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +32,8 @@ import de.felice.chipcardreader.cards.DesfireDump
 import de.felice.chipcardreader.cards.vdv.VdvCard
 import de.felice.chipcardreader.cards.vdv.VdvTicket
 import de.felice.chipcardreader.data.LabelStore
+import de.felice.chipcardreader.nfc.NdefInfo
+import de.felice.chipcardreader.nfc.TagSummary
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.NumberFormat
@@ -49,64 +42,43 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-@Composable
-fun CardScreen(state: ReaderState, labels: LabelStore, onOpenNfcSettings: () -> Unit) {
-    val haptics = LocalHapticFeedback.current
-    LaunchedEffect(state) {
-        if (state is ReaderState.Done) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-    }
-    // Which label is being edited right now (null = no dialog open).
-    var editing by remember { mutableStateOf<LabelEdit?>(null) }
-
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-        Scaffold { padding ->
-            LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item { Text("ChipCardReader", style = MaterialTheme.typography.headlineMedium) }
-                when (state) {
-                    ReaderState.NoNfc -> item { Hint("Dieses Gerät hat kein NFC. Sad.") }
-                    ReaderState.NfcDisabled -> item {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Hint("NFC ist ausgeschaltet.")
-                            Button(onClick = onOpenNfcSettings) { Text("NFC-Einstellungen öffnen") }
-                        }
-                    }
-                    ReaderState.Waiting, ReaderState.Reading -> item {
-                        Hint("Halte eine Fahrkarte oder Mensakarte an die Rückseite des Handys.")
-                    }
-                    is ReaderState.Done -> {
-                        result(state.result, labels) { editing = it }
-                        item {
-                            Text(
-                                "Nächste Karte einfach dranhalten.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
+/** Content of the "Lesen" tab. Items go into the parent LazyColumn. */
+fun LazyListScope.readTab(state: ReaderState, labels: LabelStore, onOpenNfcSettings: () -> Unit, onEdit: (LabelEdit) -> Unit) {
+    when (state) {
+        ReaderState.NoNfc -> item { Hint("Dieses Gerät hat kein NFC. Sad.") }
+        ReaderState.NfcDisabled -> item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Hint("NFC ist ausgeschaltet.")
+                Button(onClick = onOpenNfcSettings) { Text("NFC-Einstellungen öffnen") }
             }
         }
-        editing?.let { edit ->
-            LabelDialog(edit, onDismiss = { editing = null }) { name ->
-                edit.save(name)
-                editing = null
+        ReaderState.Waiting -> item {
+            Hint("Halte eine Karte oder einen NFC-Sticker an die Rückseite des Handys.")
+        }
+        is ReaderState.Done -> {
+            state.scan.content?.let { result(it, labels, onEdit) }
+            state.scan.tag.ndef?.let { item { NdefCard(it) } }
+            item { TagInfoCard(state.scan.tag) }
+            item {
+                Text(
+                    "Nächste Karte einfach dranhalten.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
 }
 
 /** What the rename dialog is editing. */
-private class LabelEdit(val title: String, val current: String?, val save: (String) -> Unit)
+class LabelEdit(val title: String, val current: String?, val save: (String) -> Unit)
 
 private fun LazyListScope.result(result: CardResult, labels: LabelStore, onEdit: (LabelEdit) -> Unit) {
     when (result) {
         is CardResult.Ticket -> {
             if (result.card.tickets.isEmpty()) item { Hint("Keine Fahrkarte auf dieser Karte gespeichert.") }
             items(result.card.tickets) { TicketCard(it, labels, onEdit) }
+            item { PrivacyCard(result.card, labels) }
             item { CardInfo(result.card, labels, onEdit) }
             item {
                 Details {
@@ -116,6 +88,7 @@ private fun LazyListScope.result(result: CardResult, labels: LabelStore, onEdit:
                     }
                     Mono(result.card.rawDirectory)
                     result.card.tickets.forEach { Mono(it.raw) }
+                    result.card.logRaw?.let { Mono("Logbuch:\n$it") }
                 }
             }
         }
@@ -215,6 +188,91 @@ private fun validityText(v: VdvTicket.Validity, until: LocalDateTime?, now: Loca
     VdvTicket.Validity.UNKNOWN -> "❔ Gültigkeit unbekannt"
 }
 
+// --- "Was weiß meine Karte über mich?" ---------------------------------------
+
+@Composable
+private fun PrivacyCard(card: VdvCard, labels: LabelStore) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("🕵️ Was weiß deine Karte über dich?", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Das hier kann jedes NFC-Handy ohne Schlüssel lesen:",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            card.appInstance?.let {
+                Text("🪪 Kartennummer $it, eindeutig und mit deinem Abo verknüpft")
+            }
+            Text("🎫 ${card.tickets.size} Ticket(s) mit Produkt und Gültigkeit")
+            if (card.log.isEmpty()) {
+                Text("📓 Logbuch: nichts frei lesbar")
+            } else {
+                Text("📓 Logbuch: ${card.log.size} Einträge")
+                card.log.forEach { e ->
+                    val place = labels.org(e.placeOrg)?.let { "$it, " } ?: "Org ${e.placeOrg}, "
+                    Text(
+                        "${e.time?.format(DATE_TIME) ?: "?"} · ${e.kind}\n" +
+                            "   Ort ${e.placeNumber} ($place Typ ${e.placeType}) · Gerät ${e.terminalType}/${e.terminalNumber}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            if (card.hasCustomerData) {
+                Text("🔒 Name & Geburtsdatum: auf der Karte gespeichert, aber PIN-geschützt. Liest diese App nicht.")
+            }
+            Text(
+                "Orts- und Gerätenummern sind interne Nummern des Verkehrsunternehmens. " +
+                    "Ohne deren Liste weiß man nur, DASS etwas passiert ist, nicht genau wo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// --- Generic tag info & NDEF ----------------------------------------------------
+
+@Composable
+private fun TagInfoCard(tag: TagSummary) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Chip", style = MaterialTheme.typography.titleSmall)
+            Text(tag.chip, style = MaterialTheme.typography.titleMedium)
+            tag.manufacturer?.let { Text("Hersteller: $it", style = MaterialTheme.typography.bodySmall) }
+            tag.memoryBytes?.let { Text("Speicher: $it Byte", style = MaterialTheme.typography.bodySmall) }
+            if (tag.ndef == null && tag.formatable) {
+                Text("Leer und beschreibbar (Tab „Schreiben“).", style = MaterialTheme.typography.bodySmall)
+            }
+            Mono(
+                "UID ${tag.uid}" +
+                    (tag.atqa?.let { "\nATQA $it · SAK ${tag.sak}" } ?: "") +
+                    "\n${tag.technologies.joinToString()}",
+            )
+        }
+    }
+}
+
+@Composable
+private fun NdefCard(ndef: NdefInfo) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Inhalt (NDEF)", style = MaterialTheme.typography.titleSmall)
+            if (ndef.entries.isEmpty()) Text("Leer")
+            ndef.entries.forEach { e ->
+                Text(e.kind, fontWeight = FontWeight.Bold)
+                SelectionContainer { Text(e.value) }
+            }
+            Text(
+                "${ndef.usedBytes} von ${ndef.capacity} Byte belegt · " +
+                    if (ndef.writable) "beschreibbar" else "schreibgeschützt 🔒",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
 // --- Balance -----------------------------------------------------------------
 
 @Composable
@@ -246,7 +304,7 @@ private fun Editable(
 }
 
 @Composable
-private fun LabelDialog(edit: LabelEdit, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+fun LabelDialog(edit: LabelEdit, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var value by remember { mutableStateOf(edit.current.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -263,7 +321,7 @@ private fun LabelDialog(edit: LabelEdit, onDismiss: () -> Unit, onSave: (String)
 }
 
 @Composable
-private fun InfoCard(title: String, body: String) {
+internal fun InfoCard(title: String, body: String) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -304,14 +362,15 @@ private fun AppCard(app: AppDump) {
 }
 
 @Composable
-private fun Hint(text: String) = Text(text, style = MaterialTheme.typography.bodyLarge)
+internal fun Hint(text: String) = Text(text, style = MaterialTheme.typography.bodyLarge)
 
 @Composable
-private fun Mono(text: String) = SelectionContainer {
+internal fun Mono(text: String) = SelectionContainer {
     Text(text, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
 }
 
 private val DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+private val DATE_TIME = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
 
 private fun euro(value: BigDecimal): String =
     NumberFormat.getCurrencyInstance(Locale.GERMANY).format(value.setScale(2, RoundingMode.DOWN))

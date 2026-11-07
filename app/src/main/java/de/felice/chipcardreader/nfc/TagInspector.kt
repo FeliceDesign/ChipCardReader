@@ -23,9 +23,9 @@ data class TagSummary(
     val sak: String?,
     val memoryBytes: Int?,
     val ndef: NdefInfo?,
-    /** Blank sticker that can be prepared for NDEF. */
-    val formatable: Boolean,
-    val isSmartcard: Boolean,
+    /** Same rule the writer uses, so "beschreibbar" is never a lie. */
+    val writeDecision: WritePolicy.Decision,
+    val iso15693: Iso15693Info?,
 )
 
 data class NdefInfo(
@@ -73,9 +73,43 @@ object TagInspector {
             sak = nfcA?.let { "%02X".format(it.sak) },
             memoryBytes = memory,
             ndef = ndef,
-            formatable = NdefFormatable.get(tag) != null,
-            isSmartcard = IsoDep.get(tag) != null,
+            writeDecision = WritePolicy.decide(facts(tag)),
+            iso15693 = NfcV.get(tag)?.let(::readIso15693),
         )
+    }
+
+    /** Facts for WritePolicy, straight from what Android saw at discovery (no I/O). */
+    fun facts(tag: Tag): WritePolicy.TagFacts {
+        val ndef = Ndef.get(tag)
+        return WritePolicy.TagFacts(
+            isSmartcard = IsoDep.get(tag) != null,
+            isIso15693 = NfcV.get(tag) != null,
+            isUltralight = MifareUltralight.get(tag) != null,
+            hasNdef = ndef != null,
+            ndefWritable = ndef?.isWritable == true,
+            formatable = NdefFormatable.get(tag) != null,
+        )
+    }
+
+    /** System info + up to 64 blocks. Read-only: we never write ISO 15693 tags. */
+    private fun readIso15693(v: NfcV): Iso15693Info? = try {
+        v.connect()
+        val uid = v.tag.id
+        val infoResponse = v.transceive(Iso15693.getSystemInfo()).takeUnless(Iso15693::isError)
+            ?: v.transceive(Iso15693.getSystemInfo(uid))
+        val info = Iso15693.parseSystemInfo(infoResponse)
+            ?: Iso15693Info(null, null, null, null, null, emptyList())
+        val blocks = mutableListOf<ByteArray>()
+        for (n in 0 until minOf(info.blockCount ?: 64, 64)) {
+            val r = runCatching { v.transceive(Iso15693.readBlock(n)) }.getOrNull()
+            if (r == null || Iso15693.isError(r)) break // locked/protected or end of memory
+            blocks += r.copyOfRange(1, r.size)
+        }
+        info.copy(blocks = blocks)
+    } catch (e: Exception) {
+        null
+    } finally {
+        runCatching { v.close() }
     }
 
     private fun readNdef(tag: Tag): NdefInfo? {

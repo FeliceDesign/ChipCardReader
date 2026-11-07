@@ -33,7 +33,11 @@ import de.felice.chipcardreader.cards.vdv.VdvCard
 import de.felice.chipcardreader.cards.vdv.Passenger
 import de.felice.chipcardreader.cards.vdv.VdvTicket
 import de.felice.chipcardreader.data.LabelStore
+import de.felice.chipcardreader.nfc.Iso15693
+import de.felice.chipcardreader.nfc.Iso15693Info
 import de.felice.chipcardreader.nfc.NdefInfo
+import de.felice.chipcardreader.nfc.WritePolicy
+import de.felice.chipcardreader.nfc.toHex
 import de.felice.chipcardreader.nfc.TagSummary
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -59,6 +63,7 @@ fun LazyListScope.readTab(state: ReaderState, labels: LabelStore, onOpenNfcSetti
         is ReaderState.Done -> {
             state.scan.content?.let { result(it, labels, onEdit) }
             state.scan.tag.ndef?.let { item { NdefCard(it) } }
+            state.scan.tag.iso15693?.let { item { Iso15693Card(it) } }
             item { TagInfoCard(state.scan.tag) }
             item {
                 Text(
@@ -264,14 +269,44 @@ private fun TagInfoCard(tag: TagSummary) {
             Text(tag.chip, style = MaterialTheme.typography.titleMedium)
             tag.manufacturer?.let { Text("Hersteller: $it", style = MaterialTheme.typography.bodySmall) }
             tag.memoryBytes?.let { Text("Speicher: $it Byte", style = MaterialTheme.typography.bodySmall) }
-            if (tag.ndef == null && tag.formatable) {
-                Text("Leer und beschreibbar (Tab „Schreiben“).", style = MaterialTheme.typography.bodySmall)
-            }
+            Text(
+                when (tag.writeDecision) {
+                    WritePolicy.Decision.FormatBlankSticker -> "✍️ Leerer Sticker, beschreibbar (Tab „Schreiben“)"
+                    WritePolicy.Decision.WriteNdef -> "✍️ Beschreibbar (Tab „Schreiben“)"
+                    is WritePolicy.Decision.Refuse -> "🔒 Wird von dieser App nicht beschrieben"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
             Mono(
                 "UID ${tag.uid}" +
                     (tag.atqa?.let { "\nATQA $it · SAK ${tag.sak}" } ?: "") +
                     "\n${tag.technologies.joinToString()}",
             )
+        }
+    }
+}
+
+@Composable
+private fun Iso15693Card(info: Iso15693Info) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("📚 ISO-15693-Etikett", style = MaterialTheme.typography.titleMedium)
+            info.afi?.let { afi ->
+                Text("AFI 0x%02X".format(afi) + (Iso15693.afiMeaning(afi)?.let { " · $it" } ?: ""))
+            }
+            if (info.blockCount != null && info.blockSize != null) {
+                Text(
+                    "${info.blockCount} Blöcke à ${info.blockSize} Byte, ${info.blocks.size} davon frei lesbar",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (info.blocks.isNotEmpty()) {
+                Text("Als Text (Mediennummern sind oft lesbar):", style = MaterialTheme.typography.bodySmall)
+                Mono(info.ascii)
+                Mono(info.blocks.mapIndexed { i, b -> "%02d: %s".format(i, b.toHex()) }.joinToString("\n"))
+            } else {
+                Text("Speicher nicht frei lesbar.")
+            }
         }
     }
 }

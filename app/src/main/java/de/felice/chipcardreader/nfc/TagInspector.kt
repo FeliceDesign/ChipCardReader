@@ -91,7 +91,7 @@ object TagInspector {
         )
     }
 
-    /** System info + up to 64 blocks. Read-only: we never write ISO 15693 tags. */
+    /** System info + up to 128 blocks. Read-only: we never write ISO 15693 tags. */
     private fun readIso15693(v: NfcV): Iso15693Info? = try {
         v.connect()
         val uid = v.tag.id
@@ -100,7 +100,7 @@ object TagInspector {
         val info = Iso15693.parseSystemInfo(infoResponse)
             ?: Iso15693Info(null, null, null, null, null, emptyList())
         val blocks = mutableListOf<ByteArray>()
-        for (n in 0 until minOf(info.blockCount ?: 64, 64)) {
+        for (n in 0 until minOf(info.blockCount ?: 128, 128)) {
             val r = runCatching { v.transceive(Iso15693.readBlock(n)) }.getOrNull()
             if (r == null || Iso15693.isError(r)) break // locked/protected or end of memory
             blocks += r.copyOfRange(1, r.size)

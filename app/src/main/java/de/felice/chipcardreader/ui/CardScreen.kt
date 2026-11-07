@@ -33,6 +33,8 @@ import de.felice.chipcardreader.cards.vdv.VdvCard
 import de.felice.chipcardreader.cards.vdv.Passenger
 import de.felice.chipcardreader.cards.vdv.VdvTicket
 import de.felice.chipcardreader.data.LabelStore
+import de.felice.chipcardreader.library.Iso28560
+import de.felice.chipcardreader.library.LibraryTag
 import de.felice.chipcardreader.nfc.Iso15693
 import de.felice.chipcardreader.nfc.Iso15693Info
 import de.felice.chipcardreader.nfc.NdefInfo
@@ -63,7 +65,15 @@ fun LazyListScope.readTab(state: ReaderState, labels: LabelStore, onOpenNfcSetti
         is ReaderState.Done -> {
             state.scan.content?.let { result(it, labels, onEdit) }
             state.scan.tag.ndef?.let { item { NdefCard(it) } }
-            state.scan.tag.iso15693?.let { item { Iso15693Card(it) } }
+            state.scan.tag.iso15693?.let { v ->
+                val library = Iso28560.decode(v.data)
+                if (library != null) {
+                    item { LibraryCard(library, v.afi, labels, onEdit) }
+                    item { Details { Iso15693Card(v) } }
+                } else {
+                    item { Iso15693Card(v) }
+                }
+            }
             item { TagInfoCard(state.scan.tag) }
             item {
                 Text(
@@ -287,6 +297,49 @@ private fun TagInfoCard(tag: TagSummary) {
 }
 
 @Composable
+private fun LibraryCard(tag: LibraryTag, afi: Int?, labels: LabelStore, onEdit: (LabelEdit) -> Unit) {
+    val libraryName = labels.library(tag.libraryId)
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                (if (tag.isPatronCard) "🪪 " else "📚 ") + tag.usageName,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                tag.itemId.ifEmpty { "?" },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                if (tag.isPatronCard) "Ausweisnummer" else "Mediennummer (wie auf dem Barcode)",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!tag.isPatronCard) {
+                when (afi) {
+                    0xC2 -> Text("✅ Ausgeliehen, das Tor am Ausgang bleibt still")
+                    0x07 -> Text("🏛️ Im Bestand, das Tor am Ausgang würde piepen")
+                    null -> Unit
+                    else -> Text("Sicherungsstatus unbekannt (AFI 0x%02X)".format(afi))
+                }
+            }
+            if (tag.partsInSet > 1) Text("Teil ${tag.partNumber} von ${tag.partsInSet}")
+            Editable(text = "Bibliothek: ${libraryName ?: tag.libraryId}", style = { Text(it) }) {
+                onEdit(LabelEdit("Bibliothek ${tag.libraryId} benennen", libraryName) { labels.setLibrary(tag.libraryId, it) })
+            }
+            Text(
+                "ISO 28560-3 · Prüfsumme " + if (tag.crcValid) "✓" else "✗ (Daten evtl. beschädigt)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun Iso15693Card(info: Iso15693Info) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -296,7 +349,7 @@ private fun Iso15693Card(info: Iso15693Info) {
             }
             if (info.blockCount != null && info.blockSize != null) {
                 Text(
-                    "${info.blockCount} Blöcke à ${info.blockSize} Byte, ${info.blocks.size} davon frei lesbar",
+                    "${info.blockCount} Blöcke à ${info.blockSize} Byte, ${info.blocks.size} davon gelesen",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

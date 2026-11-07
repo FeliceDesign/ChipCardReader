@@ -5,7 +5,7 @@ Privates Android-NFC-Tool: Fahrkarten und Mensa-Guthaben lesen, beliebige Tags a
 **Grundregel:** Die App liest nur, was eine Karte *ohne Schlüssel* freiwillig hergibt.
 Keine Authentifizierung, kein Schlüsselraten. Geschrieben wird nur auf NFC-Sticker, nie auf Chipkarten, und nie wird ein Tag dauerhaft gesperrt. (§ 202a StGB lässt grüßen.)
 
-## Was geht (v0.5)
+## Was geht (v0.6)
 
 | Karte | Status |
 |---|---|
@@ -15,7 +15,8 @@ Keine Authentifizierung, kein Schlüsselraten. Geschrieben wird nur auf NFC-Stic
 | Jede andere **MIFARE DESFire** | 🔍 Explorer: listet Apps/Dateien, zeigt frei lesbare Bytes |
 | **Jeder Tag** | ✅ Chipmodell (NTAG213/215/216, Ultralight, Classic 1K/4K …), Hersteller, Speicher, UID, ATQA/SAK |
 | **NDEF-Inhalt** (Sticker) | ✅ Links, Text, Kontakte (vCard), WLAN-Name, App-Links anzeigen |
-| **ISO 15693** (z. B. Bibliotheksbücher) | 🧪 AFI (ausgeliehen/gesichert), Speicherblöcke als Hex + Text. Nur lesen, nie schreiben |
+| **Bibliotheks-RFID (ISO 28560-3, „Dänisches Modell“)** | ✅ Medien- bzw. Ausweisnummer, Bibliothek, ausgeliehen/gesichert, Prüfsumme. Mit echten Tags der Stadtbücherei Ravensburg getestet |
+| Andere **ISO-15693**-Tags | 🔍 AFI, Speicherblöcke als Hex + Text. Nur lesen, nie schreiben |
 | **NDEF schreiben** | ✅ Link, Text, Kontakt auf Sticker schreiben, mit Größenanzeige |
 | VDV-Karte: **„Was weiß meine Karte über mich?“** | 🧪 Logbuch (Zeit, Ort-Nr., Gerät), Hinweis auf PIN-geschützte Kundendaten. Logbuch-Format aus czietz, noch nicht mit echter Karte bestätigt |
 | **Auto-Öffnen** | ✅ App startet beim Antippen einer Karte (Link-Sticker öffnen weiterhin den Browser) |
@@ -32,7 +33,8 @@ ndef/Ndef             NDEF-Records lesen, vCard bauen (reines Kotlin)
 nfc/TagInspector      Chiptyp, Speicher, NDEF eines beliebigen Tags (Android)
 nfc/NdefWriter        Sticker beschreiben
 nfc/WritePolicy       DIE eine Regel, ob geschrieben werden darf (UI + Writer nutzen sie)
-nfc/Iso15693          NFC-V-Befehle und -Parser (Bibliotheks-Etiketten)
+nfc/Iso15693          NFC-V-Befehle und -Parser
+library/Iso28560      Bibliotheks-Datenmodell (Nummer, Bibliothek, CRC-Prüfung)
 nfc/ChipIdentifier    GET_VERSION/Größe → Modellname
 cards/CardDispatcher  "Was ist das für eine Karte?" (reines Kotlin, testbar)
 cards/vdv/            VDV-KA: SELECT, TLV-Verzeichnis, GET DATA, Datumsformat

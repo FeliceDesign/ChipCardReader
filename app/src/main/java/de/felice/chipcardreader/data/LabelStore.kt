@@ -25,6 +25,9 @@ class LabelStore(context: Context) {
     fun setOrg(id: Int, name: String) = set(orgKey(id), name)
     fun setProduct(org: Int, product: Int, name: String) = set(productKey(org, product), name)
 
+    fun library(id: String): String? = cache[libraryKey(id)]
+    fun setLibrary(id: String, name: String) = set(libraryKey(id), name)
+
     private fun set(key: String, name: String) {
         val clean = name.trim()
         if (clean.isEmpty()) {
@@ -34,6 +37,7 @@ class LabelStore(context: Context) {
         }
     }
 
+    private fun libraryKey(id: String) = "library.$id"
     private fun orgKey(id: Int) = "org.$id"
     private fun productKey(org: Int, product: Int) = "product.$org.$product"
 }

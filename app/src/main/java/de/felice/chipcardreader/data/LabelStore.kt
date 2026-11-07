@@ -25,6 +25,11 @@ class LabelStore(context: Context) {
     fun setOrg(id: Int, name: String) = set(orgKey(id), name)
     fun setProduct(org: Int, product: Int, name: String) = set(productKey(org, product), name)
 
+    /** Catalog address for a library: your own entry, else a known default. */
+    fun catalog(libraryId: String): String? =
+        cache["catalog.$libraryId"] ?: de.felice.chipcardreader.library.KohaCatalog.KNOWN[libraryId]
+    fun setCatalog(libraryId: String, url: String) = set("catalog.$libraryId", url)
+
     fun library(id: String): String? = cache[libraryKey(id)]
     fun setLibrary(id: String, name: String) = set(libraryKey(id), name)
 

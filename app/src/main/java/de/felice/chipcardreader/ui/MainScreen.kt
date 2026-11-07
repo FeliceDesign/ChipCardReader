@@ -76,7 +76,7 @@ fun MainScreen(viewModel: ReaderViewModel, onOpenNfcSettings: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (tab == 0) {
-                        readTab(state, viewModel.labels, onOpenNfcSettings) { editing = it }
+                        readTab(state, viewModel.labels, viewModel.catalog, viewModel::lookUp, onOpenNfcSettings) { editing = it }
                     } else {
                         writeTab(writeState, viewModel::armWrite, viewModel::cancelWrite)
                     }

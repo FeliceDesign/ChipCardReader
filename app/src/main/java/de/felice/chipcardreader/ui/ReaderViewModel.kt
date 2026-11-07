@@ -7,7 +7,14 @@ import android.nfc.tech.MifareClassic
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import de.felice.chipcardreader.library.CatalogClient
+import de.felice.chipcardreader.library.Iso28560
+import de.felice.chipcardreader.library.LibraryTag
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import de.felice.chipcardreader.cards.CardDispatcher
 import de.felice.chipcardreader.cards.CardResult
 import de.felice.chipcardreader.data.LabelStore
@@ -17,7 +24,12 @@ import de.felice.chipcardreader.nfc.TagInspector
 import de.felice.chipcardreader.nfc.TagSummary
 
 /** One scan: the generic tag info plus whatever we understood of its content. */
-data class ScanResult(val tag: TagSummary, val content: CardResult?)
+data class ScanResult(val tag: TagSummary, val content: CardResult?, val library: LibraryTag? = null)
+
+sealed interface CatalogState {
+    data object Loading : CatalogState
+    data class Done(val result: CatalogClient.Result) : CatalogState
+}
 
 sealed interface ReaderState {
     data object NoNfc : ReaderState
@@ -43,6 +55,9 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
     var writeState: WriteState by mutableStateOf(WriteState.Idle)
         private set
 
+    /** Catalog lookups by media number (cached while the app runs). */
+    val catalog = mutableStateMapOf<String, CatalogState>()
+
     fun updateNfcAvailability(hasNfc: Boolean, enabled: Boolean) {
         state = when {
             !hasNfc -> ReaderState.NoNfc
@@ -65,7 +80,21 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
             writeState = WriteState.Finished(NdefWriter.write(tag, armed.request))
             return
         }
-        state = ReaderState.Done(read(tag))
+        val scan = read(tag)
+        state = ReaderState.Done(scan)
+        scan.library?.takeUnless { it.isPatronCard }?.let { lookUp(it) }
+    }
+
+    /** Ask the library's catalog for the title. Runs in the background. */
+    fun lookUp(tag: LibraryTag, force: Boolean = false) {
+        val base = labels.catalog(tag.libraryId) ?: return
+        val current = catalog[tag.itemId]
+        if (!force && (current is CatalogState.Loading ||
+                (current as? CatalogState.Done)?.result is CatalogClient.Result.Found)) return
+        catalog[tag.itemId] = CatalogState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            catalog[tag.itemId] = CatalogState.Done(CatalogClient.lookup(base, tag.itemId))
+        }
     }
 
     private fun read(tag: Tag): ScanResult {
@@ -90,6 +119,7 @@ class ReaderViewModel(app: Application) : AndroidViewModel(app) {
                 listOf("MIFARE Classic: Die Daten sind mit Schlüsseln geschützt, die wir nicht haben (und nicht knacken)."),
             )
         } else null
-        return ScanResult(summary, content)
+        val library = summary.iso15693?.let { Iso28560.decode(it.data) }
+        return ScanResult(summary, content, library)
     }
 }

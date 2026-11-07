@@ -2,10 +2,12 @@
 
 Privates Android-NFC-Tool: Fahrkarten und Mensa-Guthaben lesen, beliebige Tags analysieren, NFC-Sticker beschreiben.
 
+**Internet:** Die App geht nur online, um Buchtitel im öffentlichen Katalog einer Bücherei nachzuschlagen. Gesendet wird dabei nur die Mediennummer.
+
 **Grundregel:** Die App liest nur, was eine Karte *ohne Schlüssel* freiwillig hergibt.
 Keine Authentifizierung, kein Schlüsselraten. Geschrieben wird nur auf NFC-Sticker, nie auf Chipkarten, und nie wird ein Tag dauerhaft gesperrt. (§ 202a StGB lässt grüßen.)
 
-## Was geht (v0.6)
+## Was geht (v0.7)
 
 | Karte | Status |
 |---|---|
@@ -16,6 +18,7 @@ Keine Authentifizierung, kein Schlüsselraten. Geschrieben wird nur auf NFC-Stic
 | **Jeder Tag** | ✅ Chipmodell (NTAG213/215/216, Ultralight, Classic 1K/4K …), Hersteller, Speicher, UID, ATQA/SAK |
 | **NDEF-Inhalt** (Sticker) | ✅ Links, Text, Kontakte (vCard), WLAN-Name, App-Links anzeigen |
 | **Bibliotheks-RFID (ISO 28560-3, „Dänisches Modell“)** | ✅ Medien- bzw. Ausweisnummer, Bibliothek, ausgeliehen/gesichert, Prüfsumme. Mit echten Tags der Stadtbücherei Ravensburg getestet |
+| **Buchtitel aus dem Katalog** (Koha-Büchereien) | 🧪 Sucht die Mediennummer per RSS im Online-Katalog. Ravensburg ist vorbelegt, andere Adressen lassen sich eintragen. Fallback: „Im Katalog öffnen“. Noch nicht gegen den echten Server getestet |
 | Andere **ISO-15693**-Tags | 🔍 AFI, Speicherblöcke als Hex + Text. Nur lesen, nie schreiben |
 | **NDEF schreiben** | ✅ Link, Text, Kontakt auf Sticker schreiben, mit Größenanzeige |
 | VDV-Karte: **„Was weiß meine Karte über mich?“** | 🧪 Logbuch (Zeit, Ort-Nr., Gerät), Hinweis auf PIN-geschützte Kundendaten. Logbuch-Format aus czietz, noch nicht mit echter Karte bestätigt |
@@ -35,6 +38,7 @@ nfc/NdefWriter        Sticker beschreiben
 nfc/WritePolicy       DIE eine Regel, ob geschrieben werden darf (UI + Writer nutzen sie)
 nfc/Iso15693          NFC-V-Befehle und -Parser
 library/Iso28560      Bibliotheks-Datenmodell (Nummer, Bibliothek, CRC-Prüfung)
+library/KohaCatalog   Katalog-URL + RSS-Parser (reines Kotlin); CatalogClient holt die Daten
 nfc/ChipIdentifier    GET_VERSION/Größe → Modellname
 cards/CardDispatcher  "Was ist das für eine Karte?" (reines Kotlin, testbar)
 cards/vdv/            VDV-KA: SELECT, TLV-Verzeichnis, GET DATA, Datumsformat

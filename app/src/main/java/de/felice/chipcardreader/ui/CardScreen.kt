@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,8 @@ import de.felice.chipcardreader.cards.vdv.VdvCard
 import de.felice.chipcardreader.cards.vdv.Passenger
 import de.felice.chipcardreader.cards.vdv.VdvTicket
 import de.felice.chipcardreader.data.LabelStore
-import de.felice.chipcardreader.library.Iso28560
+import de.felice.chipcardreader.library.CatalogClient
+import de.felice.chipcardreader.library.KohaCatalog
 import de.felice.chipcardreader.library.LibraryTag
 import de.felice.chipcardreader.nfc.Iso15693
 import de.felice.chipcardreader.nfc.Iso15693Info
@@ -50,7 +52,14 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /** Content of the "Lesen" tab. Items go into the parent LazyColumn. */
-fun LazyListScope.readTab(state: ReaderState, labels: LabelStore, onOpenNfcSettings: () -> Unit, onEdit: (LabelEdit) -> Unit) {
+fun LazyListScope.readTab(
+    state: ReaderState,
+    labels: LabelStore,
+    catalog: Map<String, CatalogState>,
+    onLookUp: (LibraryTag, Boolean) -> Unit,
+    onOpenNfcSettings: () -> Unit,
+    onEdit: (LabelEdit) -> Unit,
+) {
     when (state) {
         ReaderState.NoNfc -> item { Hint("Dieses Gerät hat kein NFC. Sad.") }
         ReaderState.NfcDisabled -> item {
@@ -66,9 +75,9 @@ fun LazyListScope.readTab(state: ReaderState, labels: LabelStore, onOpenNfcSetti
             state.scan.content?.let { result(it, labels, onEdit) }
             state.scan.tag.ndef?.let { item { NdefCard(it) } }
             state.scan.tag.iso15693?.let { v ->
-                val library = Iso28560.decode(v.data)
+                val library = state.scan.library
                 if (library != null) {
-                    item { LibraryCard(library, v.afi, labels, onEdit) }
+                    item { LibraryCard(library, v.afi, labels, catalog[library.itemId], onLookUp, onEdit) }
                     item { Details { Iso15693Card(v) } }
                 } else {
                     item { Iso15693Card(v) }
@@ -297,8 +306,17 @@ private fun TagInfoCard(tag: TagSummary) {
 }
 
 @Composable
-private fun LibraryCard(tag: LibraryTag, afi: Int?, labels: LabelStore, onEdit: (LabelEdit) -> Unit) {
+private fun LibraryCard(
+    tag: LibraryTag,
+    afi: Int?,
+    labels: LabelStore,
+    lookup: CatalogState?,
+    onLookUp: (LibraryTag, Boolean) -> Unit,
+    onEdit: (LabelEdit) -> Unit,
+) {
     val libraryName = labels.library(tag.libraryId)
+    val catalogBase = labels.catalog(tag.libraryId)
+    val uriHandler = LocalUriHandler.current
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -319,6 +337,10 @@ private fun LibraryCard(tag: LibraryTag, afi: Int?, labels: LabelStore, onEdit: 
                 style = MaterialTheme.typography.bodySmall,
             )
             if (!tag.isPatronCard) {
+                CatalogSection(lookup, catalogBase?.let { KohaCatalog.searchUrl(it, tag.itemId) },
+                    onRetry = { onLookUp(tag, true) }, onOpen = { uriHandler.openUri(it) })
+            }
+            if (!tag.isPatronCard) {
                 when (afi) {
                     0xC2 -> Text("✅ Ausgeliehen, das Tor am Ausgang bleibt still")
                     0x07 -> Text("🏛️ Im Bestand, das Tor am Ausgang würde piepen")
@@ -330,6 +352,17 @@ private fun LibraryCard(tag: LibraryTag, afi: Int?, labels: LabelStore, onEdit: 
             Editable(text = "Bibliothek: ${libraryName ?: tag.libraryId}", style = { Text(it) }) {
                 onEdit(LabelEdit("Bibliothek ${tag.libraryId} benennen", libraryName) { labels.setLibrary(tag.libraryId, it) })
             }
+            Editable(
+                text = "Katalog: ${catalogBase?.removePrefix("https://") ?: "nicht hinterlegt"}",
+                style = { Text(it, style = MaterialTheme.typography.bodySmall) },
+            ) {
+                onEdit(
+                    LabelEdit("Katalog-Adresse (Koha) für ${tag.libraryId}", catalogBase) {
+                        labels.setCatalog(tag.libraryId, it)
+                        if (!tag.isPatronCard) onLookUp(tag, true)
+                    },
+                )
+            }
             Text(
                 "ISO 28560-3 · Prüfsumme " + if (tag.crcValid) "✓" else "✗ (Daten evtl. beschädigt)",
                 style = MaterialTheme.typography.bodySmall,
@@ -337,6 +370,27 @@ private fun LibraryCard(tag: LibraryTag, afi: Int?, labels: LabelStore, onEdit: 
             )
         }
     }
+}
+
+@Composable
+private fun CatalogSection(lookup: CatalogState?, searchUrl: String?, onRetry: () -> Unit, onOpen: (String) -> Unit) {
+    when (lookup) {
+        null -> Unit
+        CatalogState.Loading -> Text("🔎 Suche im Katalog …")
+        is CatalogState.Done -> when (val r = lookup.result) {
+            is CatalogClient.Result.Found -> {
+                Text(r.hit.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                r.hit.details?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            CatalogClient.Result.NotFound -> Text("Im Katalog nicht gefunden.")
+            is CatalogClient.Result.Failed -> {
+                Text(r.reason, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onRetry) { Text("Nochmal versuchen") }
+            }
+        }
+    }
+    // Always offer the human catalog page: works even when the RSS lookup doesn't.
+    searchUrl?.let { url -> TextButton(onClick = { onOpen(url) }) { Text("Im Katalog öffnen ↗") } }
 }
 
 @Composable

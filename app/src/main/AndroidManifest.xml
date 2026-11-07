@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Only used to look up book titles in a library's public catalog. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Without NFC the app is pointless, so hide it on phones that don't have it. -->
     <uses-feature android:name="android.hardware.nfc" android:required="true" />
 

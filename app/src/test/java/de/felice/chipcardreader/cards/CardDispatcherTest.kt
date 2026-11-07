@@ -43,3 +43,20 @@ class CardDispatcherTest {
         assertEquals(0, BigDecimal("0.5").compareTo(IntercardReader.tenthCentsToEuro(500)))
     }
 }
+
+class MagnaCartaTest {
+    @Test
+    fun `reads magnacarta balance from file 2 bytes 6-7`() {
+        val card = FakeDesfireCard(
+            mapOf(
+                "906A000000" to listOf("F080F39100"),
+                "905A000003F080F300" to listOf("9100"),
+                // bytes 6..7 = 0x04D2 = 1234 cents
+                "90BD0000070200000000000000" to listOf("00000000000004D29100"),
+            ),
+        )
+        val result = CardDispatcher.readIsoDep("AA", card) as CardResult.Balance
+        assertEquals("MagnaCarta", result.system)
+        assertEquals(0, BigDecimal("12.34").compareTo(result.balance))
+    }
+}

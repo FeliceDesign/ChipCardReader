@@ -31,11 +31,17 @@ class VdvKaReader(private val card: Iso7816) {
 
     /** Returns null if the card has no VDV-KA application. */
     fun read(): VdvCard? {
-        val select = card.selectByAid(AID, p2 = 0x0C)
+        var select = card.selectByAid(AID, p2 = 0x0C)
         selectStatus = select.swHex
+        // 6A86 = "wrong P1/P2". Some cards dislike P2=0C, so ask once more
+        // the plain way (P2=00). If the directory comes back, great.
+        if (select.sw == 0x6A86) {
+            select = card.selectByAid(AID, p2 = 0x00)
+            selectStatus += ", mit P2=00 → ${select.swHex}"
+        }
         if (!select.isSuccess || select.data.isEmpty()) return null
 
-        val root = BerTlv.parse(select.data)
+        val root = runCatching { BerTlv.parse(select.data) }.getOrElse { return null }
         val directory = root.firstOrNull { it.tag == Tags.APPLIKATIONSVERZEICHNIS }
             ?: return null
 

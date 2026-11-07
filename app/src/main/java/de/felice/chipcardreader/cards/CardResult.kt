@@ -27,6 +27,7 @@ sealed interface CardResult {
         override val uid: String,
         val technologies: List<String>,
         val notes: List<String>,
+        val debug: String? = null,
     ) : CardResult
 
     data class Failure(override val uid: String, val message: String) : CardResult

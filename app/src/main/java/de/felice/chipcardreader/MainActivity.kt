@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         setContent {
             CardScreen(
                 state = viewModel.state,
+                labels = viewModel.labels,
                 onOpenNfcSettings = { startActivity(Intent(Settings.ACTION_NFC_SETTINGS)) },
             )
         }

@@ -34,24 +34,20 @@ object CardDispatcher {
             return CardResult.Other(
                 uid,
                 listOf("ISO-DEP (ISO 14443-4)"),
-                listOf(
-                    "Keine DESFire-Karte (oder App-Liste geschützt).",
-                    "Ausweis, Bankkarte & Co. werden noch nicht unterstützt.",
-                    "Debug: eTicket-SELECT → SW ${vdv.selectStatus}, DESFire → ${e.message}",
-                ),
+                listOf("Weder Fahrkarte noch Guthabenkarte. Vielleicht Bank- oder Ausweiskarte?"),
+                debug = "eTicket-SELECT → SW ${vdv.selectStatus}, DESFire → ${e.message}",
             )
         }
 
         val dump = DesfireExplorer.explore(client, appIds)
 
-        if (IntercardReader.matches(appIds)) {
-            return try {
-                val reading = IntercardReader.read(client)
-                CardResult.Balance(uid, IntercardReader.NAME, reading.balance, reading.lastTransaction, dump)
-            } catch (e: Exception) {
-                CardResult.Failure(uid, "Intercard erkannt, aber Guthaben nicht lesbar: ${e.message}")
-            }
+        val reader = BalanceReader.ALL.firstOrNull { it.appId in appIds }
+            ?: return CardResult.Desfire(uid, dump)
+        return try {
+            val reading = reader.read(client)
+            CardResult.Balance(uid, reader.name, reading.balance, reading.lastTransaction, dump)
+        } catch (e: Exception) {
+            CardResult.Failure(uid, "${reader.name} erkannt, aber Guthaben nicht lesbar: ${e.message}")
         }
-        return CardResult.Desfire(uid, dump)
     }
 }

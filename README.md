@@ -5,12 +5,13 @@ Private Android-App zum Auslesen von NFC-Chipkarten: Mensa-Guthaben, Gültigkeit
 **Grundregel:** Die App liest nur, was eine Karte *ohne Schlüssel* freiwillig hergibt.
 Keine Authentifizierung, kein Schlüsselraten, kein Schreiben. (§ 202a StGB lässt grüßen.)
 
-## Was geht (v0.2)
+## Was geht (v0.3)
 
 | Karte | Status |
 |---|---|
-| **eTicket-Chipkarten (VDV-KA)**, z. B. Deutschlandticket | ✅ Tickets mit Gültigkeit (Beginn/Ende), Produkt, Karten-Gültigkeit |
-| Mensa-Karten mit **Intercard**-System (DESFire, App `0x5F8415`) | ✅ Guthaben + letzte Buchung |
+| **eTicket-Chipkarten (VDV-KA)**, z. B. Deutschlandticket | ✅ Tickets mit Gültigkeit + Resttagen, Verbund-/Produktnamen selbst vergeben (getestet mit 3 echten Karten) |
+| Mensa-Karten mit **Intercard**-System (DESFire, App `0x5F8415`) | ✅ Guthaben + letzte Buchung (mit echter Karte getestet) |
+| Mensa-Karten mit **MagnaCarta**-System (DESFire, App `0xF080F3`) | 🧪 Guthaben, nach MensaGuthaben-Doku, noch ohne echte Karte getestet |
 | Jede andere **MIFARE DESFire** | 🔍 Explorer: listet Apps/Dateien, zeigt frei lesbare Bytes |
 | MIFARE Classic / Ultralight | ℹ️ nur Erkennung + UID |
 | Ausweis, Bankkarte (ISO 7816) | ⏳ noch nicht |
@@ -23,7 +24,8 @@ ui/ReaderViewModel    Android-Tag -> IsoDep -> CardDispatcher, hält den UI-Stat
 ui/CardScreen         Compose-UI
 cards/CardDispatcher  "Was ist das für eine Karte?" (reines Kotlin, testbar)
 cards/vdv/            VDV-KA: SELECT, TLV-Verzeichnis, GET DATA, Datumsformat
-cards/IntercardReader Mensa-Format
+cards/IntercardReader Guthaben-Systeme (BalanceReader: Intercard, MagnaCarta)
+data/LabelStore       Selbst vergebene Namen für Verbund-/Produktnummern
 cards/DesfireExplorer Dump von allem frei Lesbaren
 nfc/DesfireClient     DESFire-Befehle (APDUs bauen, 0xAF-Folgeframes, Statuscodes)
 nfc/FileSettings      Dateieinstellungen + Zugriffsrechte parsen
@@ -47,4 +49,5 @@ Braucht ein Android SDK (Platform 35), z. B. über Android Studio.
 
 - Intercard-Layout: [MensaGuthaben](https://github.com/JakobWenzel/MensaGuthaben), [Metrodroid](https://github.com/metrodroid/metrodroid) (Format übernommen, Code neu geschrieben)
 - VDV-KA (Deutschlandticket): Befehle, Tags und Feldlayout aus [czietz/parse-vdv-chipcard](https://github.com/czietz/parse-vdv-chipcard) (MIT), AID bestätigt durch [zuegli](https://github.com/TheEnbyperor/zuegli), Produktnummern 9995–9999 aus dessen Produkttabellen. Die offizielle Spezifikation ist nicht öffentlich.
+- Warum keine eingebaute Verbund-Liste? Die VDV-Organisationsnummern sind nicht öffentlich. Ein falscher Name wäre schlimmer als eine ehrliche Nummer, deshalb vergibst du Namen selbst (Tippen auf ✎).
 - Kundendaten (Name, Geburtsdatum) auf VDV-Karten sind PIN-geschützt und werden bewusst nicht gelesen.

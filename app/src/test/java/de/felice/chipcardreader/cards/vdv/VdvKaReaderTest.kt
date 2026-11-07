@@ -59,6 +59,19 @@ class VdvKaReaderTest {
         assertEquals("0102", root.findAll(0x83).single().value.toHex(""))
     }
 
+    @Test
+    fun `retries select with P2=00 after 6A86`() {
+        val io = de.felice.chipcardreader.nfc.FakeDesfireCard(
+            mapOf(
+                "00A4040C0CD2760001354B414E4D30310000" to listOf("6A86"),
+                "00A404000CD2760001354B414E4D30310000" to listOf("6A82"),
+            ),
+        )
+        val reader = VdvKaReader(de.felice.chipcardreader.nfc.Iso7816(io))
+        assertNull(reader.read())
+        assertEquals("6A86, mit P2=00 → 6A82", reader.selectStatus)
+    }
+
     // --- helpers -----------------------------------------------------------
 
     private fun ticketCard(): FakeDesfireCard {

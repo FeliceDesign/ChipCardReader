@@ -7,9 +7,11 @@ import android.nfc.tech.MifareUltralight
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import de.felice.chipcardreader.cards.CardDispatcher
 import de.felice.chipcardreader.cards.CardResult
+import de.felice.chipcardreader.data.LabelStore
 import de.felice.chipcardreader.nfc.toHex
 
 sealed interface ReaderState {
@@ -20,7 +22,9 @@ sealed interface ReaderState {
     data class Done(val result: CardResult) : ReaderState
 }
 
-class ReaderViewModel : ViewModel() {
+class ReaderViewModel(app: Application) : AndroidViewModel(app) {
+
+    val labels = LabelStore(app)
 
     var state: ReaderState by mutableStateOf(ReaderState.Waiting)
         private set

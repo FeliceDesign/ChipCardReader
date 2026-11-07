@@ -77,6 +77,7 @@ class VdvKaReader(private val card: Iso7816) {
         fun find(tag: Int) = all.firstNotNullOfOrNull { it.findAll(tag).firstOrNull() }?.value
 
         val static = find(Tags.BERECHTIGUNG_STATISCH)?.let(::decodeTicketStatic)
+        val efs = find(Tags.BERECHTIGUNG_PRODUKTSPEZIFISCH)?.let(::decodeTlvEfs)
         return VdvTicket(
             entitlementNumber = static?.number,
             issuerOrg = static?.issuerOrg,
@@ -86,6 +87,8 @@ class VdvKaReader(private val card: Iso7816) {
             validUntil = static?.validUntil,
             status = find(Tags.BERECHTIGUNG_DYNAMISCH)?.firstOrNull()?.let { it.toInt() and 0xFF },
             infoText = find(Tags.INFOTEXT)?.let(::decodeText),
+            passenger = efs?.passenger,
+            areaOrgs = efs?.areaOrgs.orEmpty(),
             raw = if (response.isSuccess) tlvs.joinToString("") { it.pretty(names = Tags.NAMES) }
             else "GET DATA fehlgeschlagen (SW ${response.swHex})",
         )
@@ -148,6 +151,7 @@ object Tags {
     const val VERZ_BERECHTIGUNG = 0xE9
     const val BERECHTIGUNG_STATISCH = 0x83
     const val BERECHTIGUNG_DYNAMISCH = 0x84
+    const val BERECHTIGUNG_PRODUKTSPEZIFISCH = 0x85
     const val ZEIGER = 0xC0
     const val APPLIKATIONSLOGBUCH = 0xE3
     const val VERZ_APPLIKATIONSLOGBUCH = 0xE4
@@ -187,5 +191,8 @@ object Tags {
         0xC3 to "Letzte Transaktion",
         0xC7 to "Infotext",
         0x90 to "Prioritäten",
+        0xDA to "EFS Grunddaten",
+        0xDB to "EFS Fahrgast",
+        0xDC to "EFS Geltungsbereich",
     )
 }

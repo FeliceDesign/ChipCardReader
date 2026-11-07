@@ -30,6 +30,7 @@ import de.felice.chipcardreader.cards.AppDump
 import de.felice.chipcardreader.cards.CardResult
 import de.felice.chipcardreader.cards.DesfireDump
 import de.felice.chipcardreader.cards.vdv.VdvCard
+import de.felice.chipcardreader.cards.vdv.Passenger
 import de.felice.chipcardreader.cards.vdv.VdvTicket
 import de.felice.chipcardreader.data.LabelStore
 import de.felice.chipcardreader.nfc.NdefInfo
@@ -148,6 +149,8 @@ private fun TicketCard(ticket: VdvTicket, labels: LabelStore, onEdit: (LabelEdit
             ticket.validFrom?.let {
                 Text("seit ${it.format(DATE)}", style = MaterialTheme.typography.bodySmall)
             }
+            ticket.passenger?.let { PassengerLine(it) }
+            ticket.areaOrgs.filter { it != org }.forEach { OrgLine("Geltungsbereich", it, labels, onEdit) }
         }
     }
 }
@@ -188,6 +191,18 @@ private fun validityText(v: VdvTicket.Validity, until: LocalDateTime?, now: Loca
     VdvTicket.Validity.UNKNOWN -> "❔ Gültigkeit unbekannt"
 }
 
+/** Masked by default, so screenshots don't leak your name. Tap to reveal. */
+@Composable
+private fun PassengerLine(p: Passenger) {
+    var revealed by remember { mutableStateOf(false) }
+    val name = if (revealed) p.name else p.maskedName
+    val birth = p.birthDate?.let { if (revealed) it.format(DATE) else "••.••.${it.year}" }
+    Text(
+        "👤 $name" + (birth?.let { " · geb. $it" } ?: "") + if (revealed) "  🙈" else "  👁",
+        modifier = Modifier.clickable { revealed = !revealed },
+    )
+}
+
 // --- "Was weiß meine Karte über mich?" ---------------------------------------
 
 @Composable
@@ -216,8 +231,18 @@ private fun PrivacyCard(card: VdvCard, labels: LabelStore) {
                     )
                 }
             }
+            val passenger = card.tickets.firstNotNullOfOrNull { it.passenger }
+            if (passenger != null) {
+                Text(
+                    "👤 Name, Geburtsdatum und Geschlecht stehen IM TICKET, frei lesbar. " +
+                        "Damit Kontrolleure ein personalisiertes Ticket mit dem Ausweis vergleichen können, ohne online zu sein.",
+                )
+            }
             if (card.hasCustomerData) {
-                Text("🔒 Name & Geburtsdatum: auf der Karte gespeichert, aber PIN-geschützt. Liest diese App nicht.")
+                Text(
+                    "🔒 Zusätzlich gibt es einen Kundendaten-Block. Der ist laut Open-Source-Doku PIN-geschützt " +
+                        "und wird von dieser App nicht gelesen.",
+                )
             }
             Text(
                 "Orts- und Gerätenummern sind interne Nummern des Verkehrsunternehmens. " +

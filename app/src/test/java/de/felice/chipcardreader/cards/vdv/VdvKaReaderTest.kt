@@ -38,6 +38,10 @@ class VdvKaReaderTest {
         assertEquals(123456L, ticket.entitlementNumber)
         assertEquals(LocalDateTime.of(2026, 11, 30, 23, 59, 58), ticket.validUntil)
         assertEquals(0x01, ticket.status)
+        assertEquals("FELIX MUSTERMANN", ticket.passenger!!.name)
+        assertEquals("F•••• M•••••••••", ticket.passenger!!.maskedName)
+        assertEquals(java.time.LocalDate.of(1999, 2, 1), ticket.passenger!!.birthDate)
+        assertEquals(listOf(6291), ticket.areaOrgs)
         assertEquals(VdvTicket.Validity.VALID, ticket.validityAt(LocalDateTime.of(2026, 11, 7, 12, 0)))
         assertEquals(VdvTicket.Validity.EXPIRED, ticket.validityAt(LocalDateTime.of(2026, 12, 1, 0, 0)))
     }
@@ -98,9 +102,12 @@ class VdvKaReaderTest {
         val ticketStatic = int(123456, 4) + int(6072, 2) + int(9999, 2) + int(6072, 2) + int(6072, 2) +
             int(encode(LocalDateTime.of(2026, 11, 1, 0, 0)), 4) +
             int(encode(LocalDateTime.of(2026, 11, 30, 23, 59, 58)), 4)
+        // TLV-EFS: DB = passenger (gender, BCD birthday, name), DC = area list
+        val efs = tlv(0xDB, byteArrayOf(1, 0x19, 0x99.toByte(), 0x02, 0x01) + "FELIX#MUSTERMANN".toByteArray(Charsets.ISO_8859_1)) +
+            tlv(0xDC, byteArrayOf(0x01) + int(6291, 2))
         val ticket = tlv(
             0xE8,
-            tlv(0xEA, tlv(0x83, ticketStatic) + tlv(0x84, byteArrayOf(1, 0))) +
+            tlv(0xEA, tlv(0x83, ticketStatic) + tlv(0x84, byteArrayOf(1, 0)) + tlv(0x85, efs)) +
                 tlv(0xC7, "Deutschlandticket".toByteArray()),
         )
         // 27-byte "Allgemeine Transaktionsdaten" inside a trip transaction (F1)

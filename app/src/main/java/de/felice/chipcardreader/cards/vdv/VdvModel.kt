@@ -1,5 +1,6 @@
 package de.felice.chipcardreader.cards.vdv
 
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 data class VdvCard(
@@ -39,6 +40,10 @@ data class VdvTicket(
     val status: Int?,
     val infoText: String?,
     val raw: String,
+    /** Personal tickets (like the D-Ticket) carry the passenger so inspectors can compare with an ID. */
+    val passenger: Passenger? = null,
+    /** Organisations whose area the ticket was originally sold for. */
+    val areaOrgs: List<Int> = emptyList(),
 ) {
     val productName: String
         get() = DEUTSCHLANDTICKET_PRODUCTS[productNumber]
@@ -70,4 +75,18 @@ data class VdvTicket(
             9995 to "Deutschlandticket (Schülerticket)",
         )
     }
+}
+
+data class Passenger(
+    /** As stored on the card. VDV uses '#' between first and last name. */
+    val rawName: String,
+    val birthDate: LocalDate?,
+    val genderCode: Int,
+) {
+    val name: String get() = rawName.replace('#', ' ').trim()
+
+    /** "Felix Weber" → "F•••• W••••" (like eTicket.app does). */
+    val maskedName: String
+        get() = name.split(' ').filter { it.isNotEmpty() }
+            .joinToString(" ") { it.first() + "•".repeat((it.length - 1).coerceAtLeast(1)) }
 }
